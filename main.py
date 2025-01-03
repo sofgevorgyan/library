@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import exc
 from models import SessionLocal, Book
-from schemas import BookCreate, Book as BookSchema, ReaderCreate, Reader as ReaderSchema
+from schemas import BookCreate, BookSchema, ReaderCreate, ReaderSchema, BorrowCreate,  BorrowSchema
 
 app = FastAPI()
 
@@ -17,7 +17,12 @@ def get_db():
 # Create - создание новой книги
 @app.post("/books/", response_model=BookSchema)
 def create_book(book: BookCreate, db: Session = Depends(get_db)):
-    db_book = Book(title=book.title, author=book.author, description=book.description)
+    db_book = Book(
+        title=book.title,
+        publishing_hous=book.publishing_hous, 
+        author=book.author,
+        publication_date=book.publication_date,
+        genre=book.genre)
     db.add(db_book)
     db.commit()
     db.refresh(db_book)
@@ -25,8 +30,8 @@ def create_book(book: BookCreate, db: Session = Depends(get_db)):
 
 # Read - получение списка всех книг
 @app.get("/books/", response_model=list[BookSchema])
-def get_books(db: Session = Depends(get_db)):
-    books = db.query(Book).all()
+def get_books(db: Session = Depends(get_db), skip: int = 0, limit: int = 10):
+    books = db.query(Book).offset(skip).limit(limit).all()
     return books
 
 # Read - получение книги по ID
@@ -66,7 +71,12 @@ def delete_book(book_id: int, db: Session = Depends(get_db)):
 
 @app.post("/readers/",response_model=ReaderSchema)
 def create_reader(reader: ReaderCreate, db:Session=Depends(get_db)):
-    db_reader=Reader(name=reader.name, phone=reader.phone, address=reader.address)
+    db_reader=Reader(
+        name=reader.name,
+        phone=reader.phone, 
+        address=reader.address,
+        passport_number=reader.passport_number
+    )
     try:
         db.add(db_reader)
         db.commit()
@@ -107,3 +117,51 @@ def delete_reader(reader_id: int, db: Session = Depends(get_db)):
     db.delete(db_reader)
     db.commit()
     return {"message": "Reader deleted successfully"}
+
+
+@app.post("/borrows/", response_model=BorrowSchema)
+def create_borrow(borrow: BorrowCreate, db: Session = Depends(get_db)):
+    db_borrow = Borrow(
+        book_id=borrow.book_id,
+        reader_id=borrow.reader_id,
+        borrow_date=borrow.borrow_date,
+        return_date=borrow.return_date,
+        deadline=borrow.deadline
+    )
+    db.add(db_borrow)
+    db.commit()
+    db.refresh(db_borrow)
+    return db_borrow
+
+@app.get("/borrows/", response_model=list[BorrowSchema])
+def get_borrows(db: Session = Depends(get_db)):
+    return db.query(Borrow).all()
+
+@app.get("/borrows/{borrow_id}", response_model=BorrowSchema)
+def get_borrow(borrow_id: int, db: Session = Depends(get_db)):
+    db_borrow = db.query(Borrow).filter(Borrow.id == borrow_id).first()
+    if not db_borrow:
+        raise HTTPException(status_code=404, detail="Borrow record not found")
+    return db_borrow
+
+@app.put("/borrows/{borrow_id}", response_model=BorrowSchema)
+def update_borrow(borrow_id: int, borrow: BorrowCreate, db: Session = Depends(get_db)):
+    db_borrow = db.query(Borrow).filter(Borrow.id == borrow_id).first()
+    if not db_borrow:
+        raise HTTPException(status_code=404, detail="Borrow record not found")
+    db_borrow.book_id = borrow.book_id
+    db_borrow.reader_id = borrow.reader_id
+    db_borrow.borrow_date = borrow.borrow_date
+    db_borrow.return_date = borrow.return_date
+    db.commit()
+    db.refresh(db_borrow)
+    return db_borrow
+
+@app.delete("/borrows/{borrow_id}")
+def delete_borrow(borrow_id: int, db: Session = Depends(get_db)):
+    db_borrow = db.query(Borrow).filter(Borrow.id == borrow_id).first()
+    if not db_borrow:
+        raise HTTPException(status_code=404, detail="Borrow record not found")
+    db.delete(db_borrow)
+    db.commit()
+    return {"message": "Borrow record deleted successfully"}
